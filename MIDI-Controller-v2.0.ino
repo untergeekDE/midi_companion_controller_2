@@ -18,10 +18,12 @@
 // - Interrupt-based clocking of input scanning and MIDI output for more 
 // ----------------------------------------------------------
 
-const byte VERSION[] PROGMEM = "FW V0.4n";
+const byte VERSION[] PROGMEM = "FW V0.5";
 
-// V0.5: (projected)
+// V0.6: (projected)
 // - calibrate() routine extended
+// V0.5:
+// - Changed the display handling
 // V0.4: 
 // - Adjustable deadband
 // - Bounce2 debounce library
@@ -114,7 +116,7 @@ boolean RefreshFlag = false;
 // Startup message
 const byte t1[] PROGMEM = "LpCompanionCtrl2";
 const byte t2[] PROGMEM = "----------------";
-const byte t3[] PROGMEM = "Ch";
+const byte t3[] PROGMEM = "Ch ";
 const byte t4[] PROGMEM = "www.untergeek.de";
 
 // Menu texts
@@ -194,7 +196,8 @@ void workscreen()
   oled.clearDisplay();
   oled.fontsize=3;
   print(t3);
-  oled.printByte(MidiTxCh = EEPROM[18]);
+  oled.printChar(EEPROM[18] < 10 ? ' ' : '1');
+  oled.printChar(0x30 + EEPROM[18] % 10);
   oled.fontsize=1;
   oled.printChar('A',0,3);
   oled.printChar('B',0,5);
@@ -619,61 +622,11 @@ void loop() {
       oled.px=0;  
       oled.py=0;
       print(t3);
-      oled.printByte(MidiRxCh);
+      oled.printChar(MidiRxCh < 10 ? ' ' : '1');
+      oled.printChar(0x30 + MidiRxCh % 10);
     }
   }
   
-
-  // Wheel A
-  boolean isPitch = (EEPROM[1] > 127);
-  value = readWheel(WHEEL_A,isPitch ? wheel_a_center : wheel_a_delta, isPitch);
-  if ((value_wheel_a != value)  || RefreshFlag)
-  {
-    digitalWrite(LED2,HIGH); 
-    value_wheel_a = value;
-    if (isPitch)
-    {
-//      With v4.2 of the MIDI library, positive values only
-//      midiA.sendPitchBend((value+128)*64,MidiTxCh);
-//      usbMIDI.sendPitchBend((value+128)*64,MidiTxCh);
-// ...but with the most recent version of the MIDI library, V4.3:
-      midiA.sendPitchBend((value)*64,MidiTxCh);
-      usbMIDI.sendPitchBend((value)*64,MidiTxCh);
-    } else {
-    // Send MIDI CC
-      midiA.sendControlChange(EEPROM[1] % 0x7f,value,MidiTxCh);
-      usbMIDI.sendControlChange(EEPROM[1] % 0x7f,value,MidiTxCh);  
-    }
-    
-  // Display code
-    oled.fontsize = 2; 
-    oled.setCursor(4,3);
-    oled.printByte(value); 
-  }
-
-  // Wheel B
-  isPitch = (EEPROM[2] > 127);
-  
-  value = readWheel(WHEEL_B,isPitch ? wheel_b_center : wheel_b_delta, isPitch);
-  if ((value_wheel_b != value)  || RefreshFlag)
-  {
-    digitalWrite(LED2,HIGH); 
-    value_wheel_b = value;
-    if (isPitch)
-    {
-      midiA.sendPitchBend(value*64,MidiTxCh);
-      usbMIDI.sendPitchBend(value*64,MidiTxCh);
-    } else {
-    // Ignore ATO for the moment
-      midiA.sendControlChange(EEPROM[2] % 0x7f,value,MidiTxCh);
-      usbMIDI.sendControlChange(EEPROM[2] % 0x7f,value,MidiTxCh);  
-    }
-    
-  // Display code
-    oled.fontsize = 2; 
-    oled.setCursor(4,5);
-    oled.printByte(value); 
-  }
 
 
   // Button A
@@ -734,11 +687,58 @@ void loop() {
     }
     oled.fontsize=1;
     oled.printChar(button3.read() ? ' ' : '*',12,7); 
+  }  
+
+  // Wheel A
+  boolean isPitch = (EEPROM[1] > 127);
+  value = readWheel(WHEEL_A,isPitch ? wheel_a_center : wheel_a_delta, isPitch);
+  if ((value_wheel_a != value)  || RefreshFlag)
+  {
+    digitalWrite(LED2,HIGH); 
+    value_wheel_a = value;
+    if (isPitch)
+    {
+//      With v4.2 of the MIDI library, positive values only
+//      midiA.sendPitchBend((value+128)*64,MidiTxCh);
+//      usbMIDI.sendPitchBend((value+128)*64,MidiTxCh);
+// ...but with the most recent version of the MIDI library, V4.3:
+      midiA.sendPitchBend((value)*64,MidiTxCh);
+      usbMIDI.sendPitchBend((value)*64,MidiTxCh);
+    } else {
+    // Send MIDI CC
+      midiA.sendControlChange(EEPROM[1] % 0x7f,value,MidiTxCh);
+      usbMIDI.sendControlChange(EEPROM[1] % 0x7f,value,MidiTxCh);  
+    }
+    
+  // Display code
+    oled.fontsize = 2; 
+    oled.setCursor(4,3);
+    oled.printByte(value); 
   }
+
+  // Wheel B
+  isPitch = (EEPROM[2] > 127);
   
-  
-  //char * s =String(MidiRxCh)+":"+String(mt)+","+String(md1)+","+String(md2); 
-  //oled.print(s);
+  value = readWheel(WHEEL_B,isPitch ? wheel_b_center : wheel_b_delta, isPitch);
+  if ((value_wheel_b != value)  || RefreshFlag)
+  {
+    digitalWrite(LED2,HIGH); 
+    value_wheel_b = value;
+    if (isPitch)
+    {
+      midiA.sendPitchBend(value*64,MidiTxCh);
+      usbMIDI.sendPitchBend(value*64,MidiTxCh);
+    } else {
+    // Ignore ATO for the moment
+      midiA.sendControlChange(EEPROM[2] % 0x7f,value,MidiTxCh);
+      usbMIDI.sendControlChange(EEPROM[2] % 0x7f,value,MidiTxCh);  
+    }
+    
+  // Display code
+    oled.fontsize = 2; 
+    oled.setCursor(4,5);
+    oled.printByte(value); 
+  }
   
   //Clean up
   RefreshFlag = false;
