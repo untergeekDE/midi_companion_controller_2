@@ -10,9 +10,6 @@
 // with echoed MIDI. 
 //
 // Todo: 
-// - Configure wheels - center position for PB wheel and upper/lower range for both wheels
-// - Adapt display library
-// -- Consistent cursor handling
 // -- String handler
 // --- Overload printf function??
 // -- UTF-8 conversion? 
@@ -21,7 +18,7 @@
 // - Interrupt-based clocking of input scanning and MIDI output for more 
 // ----------------------------------------------------------
 
-const byte VERSION[] PROGMEM = "FW V0.4";
+const byte VERSION[] PROGMEM = "FW V0.4n";
 
 // V0.5: (projected)
 // - calibrate() routine extended
@@ -230,16 +227,21 @@ int readWheel(int a, int  delta, boolean centered)
 {
   int v = analogRead(a) - delta;
   if (centered)
-  { 
+  {
     // Assuming the pot normally covers just a bit more than 256 values-
     // and that center really means the middle value of the range
     
-    if ((v > -deadband) && (v < deadband)) v = 0; // Deadband adjust
-    if (v < -128) v = -128;
-      else if (v > 127) v = 127; // Clip maximal values
+    if (v > 0)
+    {
+      if (v < deadband) v = 0; else v -= deadband;
+      if (v > 127) v = 127;       // clip upper band 
+    } else { // v < 0
+      if (v > -deadband) v = 0; else v += deadband;
+      if (v < -128) v = -128;       // clip lower band
+    } // if (v > 0)
     // No division necessary here
   } else { // not centered
-    if (v < deadband) v = 0; 
+    if (v < deadband) v = 0; else v -= deadband; 
     if (v > 255) v= 255; 
     v >>= 1; // divide by two
   }
