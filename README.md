@@ -9,6 +9,8 @@ Code for a Teensy-based MIDI controller with two wheels, two buttons, two LEDs, 
 - *midicompanion2-0_Schematic.png*
 - *midicompanion2-0_breadboard-plan.png*
 
+Please note that the Fritzing schematic is missing a ground connection for one of the LEDs and switches; it is there in the schematic, but remember this when soldering. 
+
 Needs my adapted OLED library to work - library can be found in this repository: 
 https://github.com/untergeekDE/OLED_I2C_128x64_Monochrome_Library
 (Store files to a subfolder called OLED_I2C_128x64_Monochrome in the Arduino/Teensy Libraries folder)
