@@ -90,10 +90,10 @@ const byte VERSION[] PROGMEM = "FW V0.6";
 #define WHEEL_B  23 //Right Wheel
 
 #define BUTTON_A  17 //Left button
-#define BUTTON_B  16 //Right button
-#define BUTTON_C  15 //External button
+#define BUTTON_B  15 //Right button
+#define BUTTON_C  13 //External button
 
-#define LED1  15 // Top LED signals MIDI input
+#define LED1  16 // Top LED signals MIDI input
 #define LED2  14 // Bottom LED signals generated MIDI output
 
 
