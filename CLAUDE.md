@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Teensy 3.2-based MIDI controller firmware with two analog wheels (pitch bend + mod wheel), two buttons, a footswitch, two LEDs, and a 128x64 OLED display. Sends MIDI over both serial (DIN) and USB simultaneously.
+MIDI companion controller with two analog wheels (pitch bend + mod wheel), two buttons, a footswitch, two LEDs, and a 128x64 OLED display. Two implementations exist:
+
+- **`src/main.cpp`** — Original Teensy 3.2 version (C++, single file)
+- **`circuitpython/`** — Raspberry Pi Pico 2 port (CircuitPython, modular)
 
 ## Build & Upload
 
@@ -57,3 +60,66 @@ Everything lives in a single file: `src/main.cpp`. Key sections in order:
 - Buttons: D17 (A), D15 (B), D13 (C/footswitch) — INPUT_PULLUP
 - LEDs: D16 (MIDI in), D14 (MIDI out)
 - OLED: I2C (Wire), reset on D4
+
+---
+
+## CircuitPython Version (Pico 2)
+
+### Deployment
+
+1. Install CircuitPython 9.x on the Pico 2
+2. Copy the contents of `circuitpython/` to the CIRCUITPY drive
+3. Install Adafruit libraries into `lib/` on the drive:
+   - `adafruit_midi/`
+   - `adafruit_usb_host_midi.mpy`
+   - `adafruit_max3421e.mpy` (or `max3421e.mpy`)
+   - `adafruit_debouncer.mpy`
+   - `adafruit_ticks.mpy`
+   - `adafruit_displayio_ssd1306.mpy`
+   - `adafruit_display_text/`
+4. The device auto-runs `code.py` on boot
+
+### Dev Mode
+
+Hold Button A during boot to keep the filesystem writable by USB (for editing code/config from a PC). In normal mode, CircuitPython owns the filesystem for writing `config.json`.
+
+### Architecture
+
+Modular HAL + feature modules:
+
+```
+circuitpython/
+  boot.py              # Filesystem + USB setup (runs before code.py)
+  code.py              # Main loop (wiring only, no logic)
+  config.json          # Persistent configuration (JSON)
+  lib/
+    hardware/
+      pins.py          # ALL pin definitions (single source of truth)
+      wheels.py        # AnalogWheel: read, calibrate, deadband
+      buttons.py       # DebouncedButton: debounce, double-click
+      leds.py          # StatusLED: on/off
+      display.py       # OledDisplay: SSD1306 via displayio
+      midi_uart.py     # UartMidi: DIN MIDI In/Out
+      midi_usb_host.py # UsbHostMidi: MAX3421E USB Host
+    config.py          # ConfigManager: JSON config with validation
+    midi_merge.py      # MidiMerge: N inputs → M outputs
+    menu.py            # OnDeviceMenu: on-device config
+    calibration.py     # WheelCalibration: interactive routine
+```
+
+### Signal Flow
+
+Launchpad Pro 3 (USB Host/MAX3421E) + DIN MIDI In → MidiMerge ← local wheels/buttons → DIN MIDI Out → Roland SE-02
+
+### Hardware (Pico 2 version)
+
+- Board: Raspberry Pi Pico 2 (RP2350)
+- USB Host: Adafruit MAX3421E breakout (SPI)
+- Display: SSD1306 128x64 I2C OLED
+- MIDI: DIN In/Out via optocoupler or Adafruit MIDI FeatherWing
+- Pin mapping: see `circuitpython/lib/hardware/pins.py`
+
+### Design Spec & Plan
+
+- Spec: `docs/superpowers/specs/2026-03-19-circuitpython-pico2-port-design.md`
+- Plan: `docs/superpowers/plans/2026-03-19-circuitpython-pico2-port.md`
