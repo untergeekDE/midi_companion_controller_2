@@ -65,18 +65,36 @@ Everything lives in a single file: `src/main.cpp`. Key sections in order:
 
 ## CircuitPython Version (Pico 2)
 
+### Operating Modes
+
+The controller supports two configurations:
+
+| Mode | Hardware | Signal Flow |
+|------|----------|-------------|
+| **Standalone** (with MAX3421E) | Pico 2 + MAX3421E + DIN circuit | Launchpad + DIN In + USB Device ↔ MidiMerge ↔ DIN Out + USB Device + USB Host |
+| **Laptop-only** (without MAX3421E) | Pico 2 + DIN circuit | USB Device + DIN In ↔ MidiMerge ↔ DIN Out + USB Device |
+
+In both modes, the controller appears as a USB MIDI device to a connected computer. The MAX3421E USB Host is detected at startup — if the libraries aren't installed or the chip isn't present, it is skipped silently.
+
+Echo prevention: messages from a source are never sent back to that same source.
+
 ### Deployment
 
 1. Install CircuitPython 9.x on the Pico 2
 2. Copy the contents of `circuitpython/` to the CIRCUITPY drive
 3. Install Adafruit libraries into `lib/` on the drive:
+
+   **Required (both modes):**
    - `adafruit_midi/`
-   - `adafruit_usb_host_midi.mpy`
-   - `adafruit_max3421e.mpy` (or `max3421e.mpy`)
    - `adafruit_debouncer.mpy`
    - `adafruit_ticks.mpy`
    - `adafruit_displayio_ssd1306.mpy`
    - `adafruit_display_text/`
+
+   **Only for standalone mode (with MAX3421E):**
+   - `adafruit_usb_host_midi.mpy`
+   - `max3421e.mpy`
+
 4. The device auto-runs `code.py` on boot
 
 ### Dev Mode
@@ -89,32 +107,29 @@ Modular HAL + feature modules:
 
 ```
 circuitpython/
-  boot.py              # Filesystem + USB setup (runs before code.py)
-  code.py              # Main loop (wiring only, no logic)
-  config.json          # Persistent configuration (JSON)
+  boot.py                # Filesystem + USB setup (runs before code.py)
+  code.py                # Main loop (wiring only, no logic)
+  config.json            # Persistent configuration (JSON)
   lib/
     hardware/
-      pins.py          # ALL pin definitions (single source of truth)
-      wheels.py        # AnalogWheel: read, calibrate, deadband
-      buttons.py       # DebouncedButton: debounce, double-click
-      leds.py          # StatusLED: on/off
-      display.py       # OledDisplay: SSD1306 via displayio
-      midi_uart.py     # UartMidi: DIN MIDI In/Out
-      midi_usb_host.py # UsbHostMidi: MAX3421E USB Host
-    config.py          # ConfigManager: JSON config with validation
-    midi_merge.py      # MidiMerge: N inputs → M outputs
-    menu.py            # OnDeviceMenu: on-device config
-    calibration.py     # WheelCalibration: interactive routine
+      pins.py            # ALL pin definitions (single source of truth)
+      wheels.py          # AnalogWheel: read, calibrate, deadband
+      buttons.py         # DebouncedButton: debounce, double-click
+      leds.py            # StatusLED: on/off
+      display.py         # OledDisplay: SSD1306 via displayio
+      midi_uart.py       # UartMidi: DIN MIDI In/Out
+      midi_usb_device.py # UsbDeviceMidi: native USB MIDI (laptop/DAW)
+      midi_usb_host.py   # UsbHostMidi: MAX3421E USB Host (optional)
+    config.py            # ConfigManager: JSON config with validation
+    midi_merge.py        # MidiMerge: N inputs → M outputs, echo prevention
+    menu.py              # OnDeviceMenu: on-device config
+    calibration.py       # WheelCalibration: interactive routine
 ```
-
-### Signal Flow
-
-Launchpad Pro 3 (USB Host/MAX3421E) + DIN MIDI In → MidiMerge ← local wheels/buttons → DIN MIDI Out → Roland SE-02
 
 ### Hardware (Pico 2 version)
 
 - Board: Raspberry Pi Pico 2 (RP2350)
-- USB Host: Adafruit MAX3421E breakout (SPI)
+- USB Host: Adafruit MAX3421E breakout (SPI) — optional
 - Display: SSD1306 128x64 I2C OLED
 - MIDI: DIN In/Out via optocoupler or Adafruit MIDI FeatherWing
 - Pin mapping: see `circuitpython/lib/hardware/pins.py`
