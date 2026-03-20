@@ -21,9 +21,17 @@ from hardware.buttons import DebouncedButton
 from hardware.wheels import AnalogWheel
 from hardware.display import OledDisplay
 from hardware.midi_uart import UartMidi
-from hardware.midi_usb_host import UsbHostMidi
 from hardware.midi_usb_device import UsbDeviceMidi
 from midi_merge import MidiMerge
+
+# USB Host (MAX3421E) is optional — controller works without it as a
+# pure USB MIDI device connected to a laptop. If the MAX3421E libraries
+# aren't installed or the chip isn't present, we skip it silently.
+try:
+    from hardware.midi_usb_host import UsbHostMidi
+    _HAS_USB_HOST = True
+except ImportError:
+    _HAS_USB_HOST = False
 from config import ConfigManager
 from menu import OnDeviceMenu
 from adafruit_midi.control_change import ControlChange
@@ -42,7 +50,6 @@ config.load()
 
 # Communication buses.
 i2c = busio.I2C(pins.I2C_SCL, pins.I2C_SDA)
-spi = busio.SPI(pins.SPI_CLK, MOSI=pins.SPI_MOSI, MISO=pins.SPI_MISO)
 
 # Display.
 display = OledDisplay(i2c)
@@ -74,17 +81,22 @@ wheel_b.calibrate(center=config.get("wheel_b.calibration.center"),
 # MIDI interfaces.
 uart_midi = UartMidi(pins.UART_TX, pins.UART_RX,
                      channel=config.get("midi.tx_channel") - 1)
-usb_host_midi = UsbHostMidi(spi, pins.USB_HOST_CS)
 usb_device_midi = UsbDeviceMidi(channel=config.get("midi.tx_channel") - 1)
 
-# MIDI merge engine.
-# Inputs: USB Host (Launchpad), USB Device (laptop/DAW), DIN In
-# Outputs: DIN Out (Roland SE-02), USB Device (laptop/DAW), USB Host (Launchpad)
-# Echo prevention: matching names (e.g., "usb_host") prevent a source's
-# messages from being sent back to itself.
+# USB Host (MAX3421E) — only if hardware + libraries are present.
+merge_inputs = {"usb_device": usb_device_midi, "din": uart_midi}
+merge_outputs = {"din": uart_midi, "usb_device": usb_device_midi}
+
+if _HAS_USB_HOST:
+    spi = busio.SPI(pins.SPI_CLK, MOSI=pins.SPI_MOSI, MISO=pins.SPI_MISO)
+    usb_host_midi = UsbHostMidi(spi, pins.USB_HOST_CS)
+    merge_inputs["usb_host"] = usb_host_midi
+    merge_outputs["usb_host"] = usb_host_midi
+
+# MIDI merge engine with echo prevention.
 merge = MidiMerge(
-    inputs={"usb_host": usb_host_midi, "usb_device": usb_device_midi, "din": uart_midi},
-    outputs={"din": uart_midi, "usb_device": usb_device_midi, "usb_host": usb_host_midi},
+    inputs=merge_inputs,
+    outputs=merge_outputs,
     thru_enabled=config.get("midi.thru_enabled")
 )
 
