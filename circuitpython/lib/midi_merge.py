@@ -1,23 +1,25 @@
 # midi_merge.py — MIDI merge engine.
 #
-# Collects messages from multiple MIDI inputs (USB Host, DIN In) and
-# locally injected events (wheels, buttons), then sends everything
-# to the configured outputs (DIN Out).
+# Collects messages from multiple MIDI inputs (USB Host, USB Device, DIN In)
+# and locally injected events (wheels, buttons), then sends everything
+# to the configured outputs (DIN Out, USB Device, USB Host).
+#
+# Echo prevention: messages from a source are NOT sent back to that same
+# source. For example, data received from the Launchpad (USB Host) is sent
+# to DIN Out and USB Device, but NOT back to the Launchpad.
 #
 # The merge engine does not filter, remap channels, or modify messages.
-# USB Host input is always forwarded. DIN input is only forwarded when
-# thru_enabled is True (matching the original Teensy behavior).
+# DIN input is only forwarded when thru_enabled is True.
+# All other inputs are always forwarded.
 #
 # Usage:
 #     merge = MidiMerge(
-#         inputs={"usb": usb_midi, "din": uart_midi},
-#         outputs=[uart_midi],
+#         inputs={"usb_host": usb_host, "usb_device": usb_dev, "din": uart},
+#         outputs={"din": uart, "usb_device": usb_dev, "usb_host": usb_host},
 #         thru_enabled=False
 #     )
-#     # In the main loop:
 #     merge.process()
 #     merge.inject(some_midi_message)
-#     # At end of loop:
 #     merge.flush()
 
 
@@ -27,7 +29,7 @@ class MidiMerge:
     The processing order per loop iteration is:
     1. process() — reads all inputs, queues messages for output
     2. inject() — adds locally generated messages (wheels, buttons)
-    3. flush() — sends all queued messages to all outputs
+    3. flush() — sends all queued messages to outputs (avoiding echo)
 
     Attributes:
         had_input: True if any external input was received during the
@@ -37,10 +39,11 @@ class MidiMerge:
     Args:
         inputs: Dict mapping source names to input objects. Each input
             must have a receive() method returning a message or None.
-            Expected keys: "usb" for USB Host, "din" for DIN MIDI In.
-        outputs: List of output objects. Each must have a send(msg) method.
+        outputs: Dict mapping output names to output objects. Each must
+            have a send(msg) method. Names matching input names enable
+            echo prevention (e.g., "usb_host" in both dicts means USB
+            Host input won't be echoed back to USB Host output).
         thru_enabled: If True, DIN input ("din") is forwarded to outputs.
-            USB Host input ("usb") is always forwarded regardless.
     """
 
     def __init__(self, inputs, outputs, thru_enabled=False):
@@ -48,13 +51,15 @@ class MidiMerge:
         self.outputs = outputs
         self.thru_enabled = thru_enabled
         self.had_input = False
-        self._queue = []  # Messages to send this cycle.
+        # Queue entries are (msg, source_name) tuples.
+        # source_name is None for locally injected messages.
+        self._queue = []
 
     def process(self):
         """Read all MIDI inputs and queue messages for output.
 
-        USB Host input is always forwarded. DIN input is only forwarded
-        when thru_enabled is True.
+        DIN input is only forwarded when thru_enabled is True.
+        All other inputs are always forwarded.
 
         Call once at the start of each main loop iteration.
         """
@@ -62,41 +67,42 @@ class MidiMerge:
         self.had_input = False
 
         for name, source in self.inputs.items():
-            # Read all available messages from this source.
             msg = source.receive()
             while msg is not None:
                 self.had_input = True
                 # DIN input is conditional on thru_enabled.
-                # USB input is always forwarded.
                 if name != "din" or self.thru_enabled:
-                    self._queue.append(msg)
+                    self._queue.append((msg, name))
                 msg = source.receive()
 
     def inject(self, msg):
         """Add a locally generated MIDI message to the output queue.
 
-        Used by the main loop to inject wheel and button events.
+        Locally injected messages are sent to ALL outputs (no echo issue).
 
         Args:
             msg: An adafruit_midi message object.
         """
-        self._queue.append(msg)
+        self._queue.append((msg, None))
 
     def flush(self):
-        """Send all queued messages to all outputs.
+        """Send all queued messages to outputs, avoiding echo loops.
 
-        Call once at the end of each main loop iteration, after all
-        process() and inject() calls are done.
+        Messages from a named source are sent to all outputs EXCEPT the
+        output with the same name. Locally injected messages (source=None)
+        are sent to all outputs.
+
+        Call once at the end of each main loop iteration.
         """
-        for msg in self._queue:
-            for output in self.outputs:
+        for msg, source_name in self._queue:
+            for out_name, output in self.outputs.items():
+                # Don't echo a message back to its source.
+                if source_name is not None and out_name == source_name:
+                    continue
                 output.send(msg)
         self._queue = []
 
     @property
     def has_output(self):
-        """True if there are messages queued for output this cycle.
-
-        Useful for driving the MIDI-out LED.
-        """
+        """True if there are messages queued for output this cycle."""
         return len(self._queue) > 0

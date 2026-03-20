@@ -9,7 +9,7 @@
 # 3. Process MIDI inputs (USB Host + DIN In) via MidiMerge
 # 4. Read wheels, inject changed values into the merge
 # 5. Read buttons, inject CC/Aftertouch events into the merge
-# 6. Flush merged messages to DIN MIDI Out
+# 6. Flush merged messages to all outputs (DIN + USB Device + USB Host)
 # 7. Update the OLED display
 # 8. Blink LEDs for activity indication
 
@@ -22,6 +22,7 @@ from hardware.wheels import AnalogWheel
 from hardware.display import OledDisplay
 from hardware.midi_uart import UartMidi
 from hardware.midi_usb_host import UsbHostMidi
+from hardware.midi_usb_device import UsbDeviceMidi
 from midi_merge import MidiMerge
 from config import ConfigManager
 from menu import OnDeviceMenu
@@ -73,12 +74,17 @@ wheel_b.calibrate(center=config.get("wheel_b.calibration.center"),
 # MIDI interfaces.
 uart_midi = UartMidi(pins.UART_TX, pins.UART_RX,
                      channel=config.get("midi.tx_channel") - 1)
-usb_midi = UsbHostMidi(spi, pins.USB_HOST_CS)
+usb_host_midi = UsbHostMidi(spi, pins.USB_HOST_CS)
+usb_device_midi = UsbDeviceMidi(channel=config.get("midi.tx_channel") - 1)
 
 # MIDI merge engine.
+# Inputs: USB Host (Launchpad), USB Device (laptop/DAW), DIN In
+# Outputs: DIN Out (Roland SE-02), USB Device (laptop/DAW), USB Host (Launchpad)
+# Echo prevention: matching names (e.g., "usb_host") prevent a source's
+# messages from being sent back to itself.
 merge = MidiMerge(
-    inputs={"usb": usb_midi, "din": uart_midi},
-    outputs=[uart_midi],
+    inputs={"usb_host": usb_host_midi, "usb_device": usb_device_midi, "din": uart_midi},
+    outputs={"din": uart_midi, "usb_device": usb_device_midi, "usb_host": usb_host_midi},
     thru_enabled=config.get("midi.thru_enabled")
 )
 
@@ -111,6 +117,7 @@ while True:
         wheel_b.mode = config.get("wheel_b.mode")
         wheel_b.deadband = config.get("deadband")
         uart_midi.set_channel(tx_ch)
+        usb_device_midi.set_channel(tx_ch)
         display.show_workscreen(channel=tx_ch)
         continue
 
@@ -193,7 +200,7 @@ while True:
         merge.inject(msg)
         output_generated = True
 
-    # --- Flush all queued messages to DIN MIDI Out ---
+    # --- Flush all queued messages to all outputs ---
     if output_generated:
         led_out.on()
     merge.flush()

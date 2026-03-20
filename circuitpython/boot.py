@@ -12,7 +12,6 @@
 import board
 import digitalio
 import storage
-import usb_midi
 import usb_hid
 
 # ---------------------------------------------------------------------------
@@ -71,23 +70,16 @@ if not developer_mode:
 # ---------------------------------------------------------------------------
 # USB Interface Configuration
 # ---------------------------------------------------------------------------
-# This project uses DIN-5 (hardware UART) MIDI, not USB MIDI. We disable
-# the USB MIDI interface entirely to:
-#   1. Avoid confusing the host computer with a MIDI device it shouldn't use
-#   2. Free up USB descriptor space
-#   3. Prevent any accidental MIDI messages from being sent/received via USB
+# USB MIDI is LEFT ENABLED so the controller can operate in two modes:
+#   1. Standalone: merge Launchpad (USB Host) + local controls → DIN MIDI Out
+#   2. Connected to laptop: also appear as a USB MIDI device for DAW use
 #
-# Similarly, we disable USB HID (Human Interface Device) because this device
-# is not a keyboard, mouse, or gamepad. Disabling it removes the HID interface
-# from the USB descriptor entirely.
+# USB HID is disabled because this device has no keyboard/mouse/gamepad
+# functionality.
 #
-# Note: USB CDC (serial console) remains enabled by default. This is useful
-# for debugging via the REPL. If you want to disable it too, you would call
-# usb_cdc.disable() here — but we leave it on for now.
+# USB CDC (serial console) remains enabled for debugging via the REPL.
 
-# Disable the USB MIDI interface. The host will not see this device as a
-# MIDI interface at all. All MIDI communication goes through the hardware UART.
-usb_midi.disable()
+# USB MIDI stays enabled — do NOT call usb_midi.disable().
 
 # Disable the USB HID interface. This device has no keyboard/mouse/gamepad
 # functionality exposed over USB.

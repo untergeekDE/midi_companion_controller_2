@@ -1,7 +1,7 @@
-# midi_usb_host.py — USB Host MIDI input via MAX3421E breakout.
+# midi_usb_host.py — USB Host MIDI via MAX3421E breakout.
 #
-# Reads MIDI messages from a USB MIDI device (e.g., Novation Launchpad Pro 3)
-# connected to the MAX3421E USB Host controller over SPI.
+# Reads and writes MIDI messages to/from a USB MIDI device (e.g., Novation
+# Launchpad Pro 3) connected to the MAX3421E USB Host controller over SPI.
 #
 # This module handles:
 # - SPI communication with the MAX3421E chip
@@ -9,6 +9,7 @@
 # - Hot-plug: graceful handling of connect/disconnect without crashing
 # - Translating USB MIDI packets into adafruit_midi message objects
 #   (same types as UartMidi, so MidiMerge can treat both identically)
+# - Bidirectional: receive from device AND send merged output back to device
 #
 # No device filtering is applied — any USB MIDI class-compliant device
 # is accepted.
@@ -18,8 +19,9 @@
 #     from hardware import pins
 #     from hardware.midi_usb_host import UsbHostMidi
 #     spi = busio.SPI(pins.SPI_CLK, MOSI=pins.SPI_MOSI, MISO=pins.SPI_MISO)
-#     usb_midi = UsbHostMidi(spi, pins.USB_HOST_CS)
-#     msg = usb_midi.receive()  # Returns adafruit_midi message or None
+#     usb_host = UsbHostMidi(spi, pins.USB_HOST_CS)
+#     msg = usb_host.receive()  # Returns adafruit_midi message or None
+#     usb_host.send(some_msg)   # Send merged output back to the device
 
 import digitalio
 import max3421e
@@ -29,10 +31,10 @@ import adafruit_midi
 
 
 class UsbHostMidi:
-    """USB Host MIDI input via MAX3421E.
+    """USB Host MIDI via MAX3421E — bidirectional.
 
-    Receives MIDI messages from a USB MIDI device connected to the
-    MAX3421E breakout. Handles hot-plug gracefully.
+    Receives and sends MIDI messages to/from a USB MIDI device connected
+    to the MAX3421E breakout. Handles hot-plug gracefully.
 
     Args:
         spi: A busio.SPI instance for the MAX3421E.
@@ -45,14 +47,11 @@ class UsbHostMidi:
         self._host_chip = None
         self._midi_device = None
         self._midi_in = None
+        self._midi_out = None
         self._init_host()
 
     def _init_host(self):
-        """Initialize the MAX3421E USB Host controller.
-
-        Called at startup. Sets up the chip select pin and creates
-        the MAX3421E host object.
-        """
+        """Initialize the MAX3421E USB Host controller."""
         try:
             cs = digitalio.DigitalInOut(self._cs_pin)
             cs.direction = digitalio.Direction.OUTPUT
@@ -60,31 +59,36 @@ class UsbHostMidi:
             self._host_chip = max3421e.MAX3421E(self._spi, cs)
             self._find_midi_device()
         except Exception:
-            # MAX3421E not responding or not present — operate without USB input.
             self._host_chip = None
             self._midi_device = None
             self._midi_in = None
+            self._midi_out = None
 
     def _find_midi_device(self):
         """Scan connected USB devices for a MIDI class-compliant interface.
 
-        If found, wraps it in adafruit_midi.MIDI for message parsing.
-        If not found, sets _midi_in to None (receive() will return None).
+        Sets up both input and output MIDI streams if a device is found.
         """
         try:
             if self._host_chip is None:
                 return
-            # Find any connected USB MIDI device via usb.core.
             device = usb.core.find(find_all=False)
             if device is None:
                 return
             raw_midi = adafruit_usb_host_midi.MIDI(device)
             self._midi_device = raw_midi
             self._midi_in = adafruit_midi.MIDI(midi_in=raw_midi, in_channel=None)
+            self._midi_out = adafruit_midi.MIDI(midi_out=raw_midi)
         except Exception:
-            # No MIDI device found — that's fine, we'll try again on next call.
             self._midi_device = None
             self._midi_in = None
+            self._midi_out = None
+
+    def _reset(self):
+        """Reset MIDI state after a device error or disconnection."""
+        self._midi_device = None
+        self._midi_in = None
+        self._midi_out = None
 
     def receive(self):
         """Read one MIDI message from the USB device, if available.
@@ -93,7 +97,6 @@ class UsbHostMidi:
             An adafruit_midi message object, or None if no device is
             connected or no message is available.
         """
-        # If no MIDI interface is active, try to find one (hot-plug).
         if self._midi_in is None:
             self._find_midi_device()
             if self._midi_in is None:
@@ -102,8 +105,21 @@ class UsbHostMidi:
         try:
             return self._midi_in.receive()
         except Exception:
-            # Device disconnected or communication error.
-            # Reset state so we try to re-enumerate next time.
-            self._midi_device = None
-            self._midi_in = None
+            self._reset()
             return None
+
+    def send(self, msg):
+        """Send a MIDI message to the USB device (e.g., back to Launchpad).
+
+        Silently does nothing if no device is connected.
+
+        Args:
+            msg: An adafruit_midi message object.
+        """
+        if self._midi_out is None:
+            return
+
+        try:
+            self._midi_out.send(msg)
+        except Exception:
+            self._reset()
