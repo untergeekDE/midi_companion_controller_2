@@ -93,6 +93,18 @@ class OledDisplay:
                                           x=24, y=50, color=0xFFFFFF)
         self._root.append(self._wheel_b_label)
 
+    @staticmethod
+    def _format_wheel(value, mode):
+        """Format a wheel value for display."""
+        if not isinstance(value, int):
+            return str(value)
+        if mode == "pitch_bend":
+            # Convert unsigned 0-16383 to signed -8192..8191 for display.
+            signed = value - 8192
+            return f"{signed:5d}"
+        # CC mode: show decimal 0-127.
+        return f"{value:5d}"
+
     def update_values(self, wheel_a=None, wheel_b=None, mode_a="cc", mode_b="cc"):
         """Update the wheel value displays on the workscreen.
 
@@ -101,19 +113,13 @@ class OledDisplay:
         Args:
             wheel_a: Current wheel A value (int), or None to skip update.
             wheel_b: Current wheel B value (int), or None to skip update.
-            mode_a: "cc" for hex format, "pitch_bend" for signed decimal.
-            mode_b: "cc" for hex format, "pitch_bend" for signed decimal.
+            mode_a: Wheel A mode ("cc" or "pitch_bend").
+            mode_b: Wheel B mode ("cc" or "pitch_bend").
         """
         if wheel_a is not None and self._wheel_a_label is not None:
-            if isinstance(wheel_a, int):
-                self._wheel_a_label.text = f"{wheel_a:5d}" if mode_a == "pitch_bend" else f"{wheel_a:4X}"
-            else:
-                self._wheel_a_label.text = str(wheel_a)
+            self._wheel_a_label.text = self._format_wheel(wheel_a, mode_a)
         if wheel_b is not None and self._wheel_b_label is not None:
-            if isinstance(wheel_b, int):
-                self._wheel_b_label.text = f"{wheel_b:5d}" if mode_b == "pitch_bend" else f"{wheel_b:4X}"
-            else:
-                self._wheel_b_label.text = str(wheel_b)
+            self._wheel_b_label.text = self._format_wheel(wheel_b, mode_b)
 
     def update_channel(self, channel):
         """Update the MIDI channel display on the workscreen."""
