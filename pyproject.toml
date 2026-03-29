@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "manual: requires physical interaction with the device (press buttons, move wheels)",
+]

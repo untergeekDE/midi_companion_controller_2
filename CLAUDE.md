@@ -80,7 +80,7 @@ Echo prevention: messages from a source are never sent back to that same source.
 
 ### Deployment
 
-1. Install CircuitPython 9.x on the Pico 2
+1. Install CircuitPython 10.x on the Pico 2
 2. Copy the contents of `circuitpython/` to the CIRCUITPY drive
 3. Install Adafruit libraries into `lib/` on the drive:
 

@@ -23,6 +23,8 @@
 #     msg = usb_host.receive()  # Returns adafruit_midi message or None
 #     usb_host.send(some_msg)   # Send merged output back to the device
 
+import time
+
 import digitalio
 import max3421e
 import usb.core
@@ -41,6 +43,8 @@ class UsbHostMidi:
         cs_pin: A board pin for the MAX3421E chip select.
     """
 
+    _SCAN_COOLDOWN_NS = 500_000_000  # 500ms between USB bus scans
+
     def __init__(self, spi, cs_pin):
         self._spi = spi
         self._cs_pin = cs_pin
@@ -48,6 +52,7 @@ class UsbHostMidi:
         self._midi_device = None
         self._midi_in = None
         self._midi_out = None
+        self._last_scan_time = 0
         self._init_host()
 
     def _init_host(self):
@@ -58,7 +63,7 @@ class UsbHostMidi:
             cs.value = True
             self._host_chip = max3421e.MAX3421E(self._spi, cs)
             self._find_midi_device()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             self._host_chip = None
             self._midi_device = None
             self._midi_in = None
@@ -79,7 +84,7 @@ class UsbHostMidi:
             self._midi_device = raw_midi
             self._midi_in = adafruit_midi.MIDI(midi_in=raw_midi, in_channel=None)
             self._midi_out = adafruit_midi.MIDI(midi_out=raw_midi)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             self._midi_device = None
             self._midi_in = None
             self._midi_out = None
@@ -98,13 +103,16 @@ class UsbHostMidi:
             connected or no message is available.
         """
         if self._midi_in is None:
-            self._find_midi_device()
+            now = time.monotonic_ns()
+            if (now - self._last_scan_time) >= self._SCAN_COOLDOWN_NS:
+                self._last_scan_time = now
+                self._find_midi_device()
             if self._midi_in is None:
                 return None
 
         try:
             return self._midi_in.receive()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             self._reset()
             return None
 
@@ -121,5 +129,5 @@ class UsbHostMidi:
 
         try:
             self._midi_out.send(msg)
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             self._reset()

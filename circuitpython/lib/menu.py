@@ -26,6 +26,7 @@
 #     menu.enter()  # Blocks until user exits menu
 
 import time
+import microcontroller
 from calibration import WheelCalibration
 
 
@@ -74,6 +75,9 @@ class OnDeviceMenu:
 
         On exit, saves the configuration to disk.
         """
+        self._selected = 0
+        saved_wb_mode = self._wheel_b.mode
+        self._wheel_b.mode = "cc"
         self._draw_menu()
         wheel_moved = False
         wheel_old = self._wheel_b.read()
@@ -111,10 +115,16 @@ class OnDeviceMenu:
                 self._handle_wheel(item, wheel_val)
                 self._draw_menu()
 
+            microcontroller.watchdog.feed()
             time.sleep(0.01)  # Yield CPU to avoid 100% spin.
 
+        # Restore wheel_b mode before saving.
+        self._wheel_b.mode = saved_wb_mode
         # Save all changes on menu exit.
-        self._config.save()
+        if not self._config.save():
+            self._display.clear()
+            self._display.show_text(0, 30, "SAVE FAILED", inverted=True)
+            time.sleep(1.5)
 
     def _draw_menu(self):
         """Redraw the entire menu screen."""

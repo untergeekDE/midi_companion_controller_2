@@ -21,6 +21,7 @@
 #     disp.update_values(wheel_a=0, wheel_b=64)
 
 import displayio
+import i2cdisplaybus
 import terminalio
 from adafruit_displayio_ssd1306 import SSD1306
 from adafruit_display_text import label
@@ -43,11 +44,10 @@ class OledDisplay:
             original hardware mounting).
     """
 
-    def __init__(self, i2c, address=0x3C, rotation=180):
-        # Release any previously held displays (important for soft-reboot).
-        # Done here rather than at module level to avoid side effects on import.
-        displayio.release_displays()
-        display_bus = displayio.I2CDisplay(i2c, device_address=address)
+    def __init__(self, i2c, address=0x3C, rotation=0):
+        # Note: displayio.release_displays() is called in code.py before I2C init
+        # to avoid "pin in use" errors on soft reboot.
+        display_bus = i2cdisplaybus.I2CDisplayBus(i2c, device_address=address)
         self._display = SSD1306(display_bus, width=_WIDTH, height=_HEIGHT,
                                 rotation=rotation)
 
@@ -82,18 +82,18 @@ class OledDisplay:
         # Wheel A label and value.
         lbl_a = label.Label(_FONT, text="A", scale=1, x=0, y=30, color=0xFFFFFF)
         self._root.append(lbl_a)
-        self._wheel_a_label = label.Label(_FONT, text="  00", scale=2,
+        self._wheel_a_label = label.Label(_FONT, text="    0", scale=2,
                                           x=24, y=30, color=0xFFFFFF)
         self._root.append(self._wheel_a_label)
 
         # Wheel B label and value.
         lbl_b = label.Label(_FONT, text="B", scale=1, x=0, y=50, color=0xFFFFFF)
         self._root.append(lbl_b)
-        self._wheel_b_label = label.Label(_FONT, text="  00", scale=2,
+        self._wheel_b_label = label.Label(_FONT, text="    0", scale=2,
                                           x=24, y=50, color=0xFFFFFF)
         self._root.append(self._wheel_b_label)
 
-    def update_values(self, wheel_a=None, wheel_b=None):
+    def update_values(self, wheel_a=None, wheel_b=None, mode_a="cc", mode_b="cc"):
         """Update the wheel value displays on the workscreen.
 
         Only redraws labels that have changed. Call this every loop iteration.
@@ -101,11 +101,19 @@ class OledDisplay:
         Args:
             wheel_a: Current wheel A value (int), or None to skip update.
             wheel_b: Current wheel B value (int), or None to skip update.
+            mode_a: "cc" for hex format, "pitch_bend" for signed decimal.
+            mode_b: "cc" for hex format, "pitch_bend" for signed decimal.
         """
         if wheel_a is not None and self._wheel_a_label is not None:
-            self._wheel_a_label.text = f"{wheel_a:4X}" if isinstance(wheel_a, int) else str(wheel_a)
+            if isinstance(wheel_a, int):
+                self._wheel_a_label.text = f"{wheel_a:5d}" if mode_a == "pitch_bend" else f"{wheel_a:4X}"
+            else:
+                self._wheel_a_label.text = str(wheel_a)
         if wheel_b is not None and self._wheel_b_label is not None:
-            self._wheel_b_label.text = f"{wheel_b:4X}" if isinstance(wheel_b, int) else str(wheel_b)
+            if isinstance(wheel_b, int):
+                self._wheel_b_label.text = f"{wheel_b:5d}" if mode_b == "pitch_bend" else f"{wheel_b:4X}"
+            else:
+                self._wheel_b_label.text = str(wheel_b)
 
     def update_channel(self, channel):
         """Update the MIDI channel display on the workscreen."""

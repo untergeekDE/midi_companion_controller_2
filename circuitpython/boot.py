@@ -17,7 +17,7 @@ import usb_hid
 # ---------------------------------------------------------------------------
 # Developer Mode Detection
 # ---------------------------------------------------------------------------
-# Button A (GP17) is used as the "developer mode" trigger during boot.
+# Button A (GP0) is used as the "developer mode" trigger during boot.
 #
 # Behavior:
 #   - If Button A is held DOWN when the board powers on or resets,
@@ -34,7 +34,7 @@ import usb_hid
 #   - Pin reads LOW  (False) when the button IS pressed (button connects pin to GND)
 # This is called "active low" logic.
 
-button_a = digitalio.DigitalInOut(board.GP17)
+button_a = digitalio.DigitalInOut(board.GP0)
 button_a.direction = digitalio.Direction.INPUT
 button_a.pull = digitalio.Pull.UP
 

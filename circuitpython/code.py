@@ -37,22 +37,41 @@ from menu import OnDeviceMenu
 from adafruit_midi.control_change import ControlChange
 from adafruit_midi.pitch_bend import PitchBend
 from adafruit_midi.channel_pressure import ChannelPressure
+from adafruit_midi.note_on import NoteOn
+from adafruit_midi.note_off import NoteOff
+
+__version__ = "2.0.0"
 
 # ──────────────────────────────────────────────
 # 1. CONFIGURATION
 # ──────────────────────────────────────────────
+import time
+
 config = ConfigManager("config.json")
-config.load()
+_load_status = config.load()
 
 # ──────────────────────────────────────────────
 # 2. HARDWARE INITIALIZATION
 # ──────────────────────────────────────────────
+
+# Release any displays held from a previous soft-reboot before claiming I2C pins.
+import displayio
+displayio.release_displays()
 
 # Communication buses.
 i2c = busio.I2C(pins.I2C_SCL, pins.I2C_SDA)
 
 # Display.
 display = OledDisplay(i2c)
+
+# Show warning if config was corrupt, persist defaults on first boot.
+if _load_status == "corrupt":
+    display.show_text(0, 20, "Config corrupt!", inverted=True)
+    display.show_text(0, 36, "Using defaults")
+    time.sleep(2)
+    display.clear()
+elif _load_status == "defaults":
+    config.save()
 
 # LEDs.
 led_in = StatusLED(pins.LED1)
@@ -107,11 +126,19 @@ menu = OnDeviceMenu(display, config, wheel_a, wheel_b, button_a, button_b)
 # 3. SHOW STARTUP SCREEN
 # ──────────────────────────────────────────────
 display.show_workscreen(channel=config.get("midi.tx_channel"))
+display.show_text(80, 10, f"v{__version__}", scale=1)
+
+# Watchdog — auto-resets if main loop hangs for 8 seconds.
+import microcontroller
+import watchdog
+microcontroller.watchdog.timeout = 8.0
+microcontroller.watchdog.mode = watchdog.WatchDogMode.RESET
 
 # ──────────────────────────────────────────────
 # 4. MAIN LOOP
 # ──────────────────────────────────────────────
 while True:
+    microcontroller.watchdog.feed()
 
     # --- Update button states ---
     button_a.update()
@@ -131,6 +158,7 @@ while True:
         uart_midi.set_channel(tx_ch)
         usb_device_midi.set_channel(tx_ch)
         display.show_workscreen(channel=tx_ch)
+        microcontroller.watchdog.feed()
         continue
 
     # --- Process MIDI inputs (USB Host + DIN) ---
@@ -145,83 +173,113 @@ while True:
     # Wheel A.
     wheel_a.read()
     if wheel_a.changed:
-        if config.get("wheel_a.mode") == "pitch_bend":
-            msg = PitchBend(wheel_a.value)
-            msg.channel = tx_ch - 1
-            merge.inject(msg)
-        else:
-            cc_num = config.get("wheel_a.cc_number")
-            msg = ControlChange(cc_num, wheel_a.value)
-            msg.channel = tx_ch - 1
-            merge.inject(msg)
-        output_generated = True
+        wa_mode = config.get("wheel_a.mode")
+        if wa_mode != "off":
+            if wa_mode == "pitch_bend":
+                msg = PitchBend(wheel_a.value)
+            else:  # "cc"
+                cc_num = config.get("wheel_a.cc_number")
+                msg = ControlChange(cc_num, wheel_a.value) if cc_num is not None else None
+            if msg is not None:
+                msg.channel = tx_ch - 1
+                merge.inject(msg)
+                output_generated = True
 
     # Wheel B.
     wheel_b.read()
     if wheel_b.changed:
-        if config.get("wheel_b.mode") == "pitch_bend":
-            msg = PitchBend(wheel_b.value)
-            msg.channel = tx_ch - 1
-            merge.inject(msg)
-        else:
-            cc_num = config.get("wheel_b.cc_number")
-            msg = ControlChange(cc_num, wheel_b.value)
-            msg.channel = tx_ch - 1
-            merge.inject(msg)
-        output_generated = True
+        wb_mode = config.get("wheel_b.mode")
+        if wb_mode != "off":
+            if wb_mode == "pitch_bend":
+                msg = PitchBend(wheel_b.value)
+            else:  # "cc"
+                cc_num = config.get("wheel_b.cc_number")
+                msg = ControlChange(cc_num, wheel_b.value) if cc_num is not None else None
+            if msg is not None:
+                msg.channel = tx_ch - 1
+                merge.inject(msg)
+                output_generated = True
 
     # --- Read buttons and inject events ---
+    # Global aftertouch value (stored under button_b for historical reasons).
     ato_value = config.get("button_b.aftertouch_value")
 
     # Button A.
     if button_a.fell or button_a.rose:
-        if config.get("button_a.mode") == "aftertouch":
-            val = ato_value if button_a.fell else 0
-            msg = ChannelPressure(val)
-        else:
+        ba_mode = config.get("button_a.mode")
+        msg = None
+        if ba_mode == "off":
+            pass
+        elif ba_mode == "aftertouch":
+            msg = ChannelPressure(ato_value if button_a.fell else 0)
+        elif ba_mode == "note":
             cc_num = config.get("button_a.cc_number")
-            val = 127 if button_a.fell else 0
-            msg = ControlChange(cc_num, val)
-        msg.channel = tx_ch - 1
-        merge.inject(msg)
-        output_generated = True
+            if cc_num is not None:
+                msg = NoteOn(cc_num, 127) if button_a.fell else NoteOff(cc_num, 0)
+        else:  # "cc"
+            cc_num = config.get("button_a.cc_number")
+            if cc_num is not None:
+                msg = ControlChange(cc_num, 127 if button_a.fell else 0)
+        if msg is not None:
+            msg.channel = tx_ch - 1
+            merge.inject(msg)
+            output_generated = True
 
     # Button B.
     if button_b.fell or button_b.rose:
-        if config.get("button_b.mode") == "aftertouch":
-            val = ato_value if button_b.fell else 0
-            msg = ChannelPressure(val)
-        else:
+        bb_mode = config.get("button_b.mode")
+        msg = None
+        if bb_mode == "off":
+            pass
+        elif bb_mode == "aftertouch":
+            msg = ChannelPressure(ato_value if button_b.fell else 0)
+        elif bb_mode == "note":
             cc_num = config.get("button_b.cc_number")
-            val = 127 if button_b.fell else 0
-            msg = ControlChange(cc_num, val)
-        msg.channel = tx_ch - 1
-        merge.inject(msg)
-        output_generated = True
+            if cc_num is not None:
+                msg = NoteOn(cc_num, 127) if button_b.fell else NoteOff(cc_num, 0)
+        else:  # "cc"
+            cc_num = config.get("button_b.cc_number")
+            if cc_num is not None:
+                msg = ControlChange(cc_num, 127 if button_b.fell else 0)
+        if msg is not None:
+            msg.channel = tx_ch - 1
+            merge.inject(msg)
+            output_generated = True
 
     # Footswitch.
     if footswitch.fell or footswitch.rose:
-        if config.get("footswitch.mode") == "aftertouch":
-            val = ato_value if footswitch.fell else 0
-            msg = ChannelPressure(val)
-        else:
+        fs_mode = config.get("footswitch.mode")
+        msg = None
+        if fs_mode == "off":
+            pass
+        elif fs_mode == "aftertouch":
+            msg = ChannelPressure(ato_value if footswitch.fell else 0)
+        elif fs_mode == "note":
             cc_num = config.get("footswitch.cc_number")
-            val = 127 if footswitch.fell else 0
-            msg = ControlChange(cc_num, val)
-        msg.channel = tx_ch - 1
-        merge.inject(msg)
-        output_generated = True
+            if cc_num is not None:
+                msg = NoteOn(cc_num, 127) if footswitch.fell else NoteOff(cc_num, 0)
+        else:  # "cc"
+            cc_num = config.get("footswitch.cc_number")
+            if cc_num is not None:
+                msg = ControlChange(cc_num, 127 if footswitch.fell else 0)
+        if msg is not None:
+            msg.channel = tx_ch - 1
+            merge.inject(msg)
+            output_generated = True
 
     # --- Flush all queued messages to all outputs ---
-    if output_generated:
-        led_out.on()
+    has_any_output = output_generated or merge.has_output
     merge.flush()
+    if has_any_output:
+        led_out.on()
 
     # --- Update display (only on value changes) ---
     if wheel_a.changed or wheel_b.changed:
         display.update_values(
             wheel_a=wheel_a.value if wheel_a.changed else None,
-            wheel_b=wheel_b.value if wheel_b.changed else None
+            wheel_b=wheel_b.value if wheel_b.changed else None,
+            mode_a=config.get("wheel_a.mode"),
+            mode_b=config.get("wheel_b.mode")
         )
 
     # --- LEDs off at end of cycle ---

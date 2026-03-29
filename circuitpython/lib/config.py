@@ -56,7 +56,7 @@ DEFAULTS = {
     },
     "button_b": {
         "mode": "aftertouch",   # "aftertouch" | "cc" | "note" | "off"
-        "aftertouch_value": 64, # Fixed aftertouch value to send (0–127)
+        "aftertouch_value": 64, # Global aftertouch value for ALL buttons/footswitch (0–127)
     },
     "footswitch": {
         "mode": "cc",           # "cc" | "note" | "off"
@@ -165,11 +165,16 @@ class ConfigManager:
         missing from the file still receive their default values — so
         adding new config keys to a future firmware version works
         automatically without resetting the user's existing settings.
+
+        Returns:
+            str: "loaded" if file loaded successfully, "defaults" if file
+                 was missing (first boot), "corrupt" if JSON was malformed.
         """
         # Always reset to a clean copy of defaults first, so that any key
         # missing from the file on disk falls back to its default value.
         self._data = _deep_copy(DEFAULTS)
 
+        status = "loaded"
         try:
             with open(self._path, "r") as f:
                 loaded = json.load(f)
@@ -178,17 +183,16 @@ class ConfigManager:
         except OSError:
             # File not found, not readable, or filesystem error.
             # Silently continue with defaults — this is expected on first boot.
-            pass
-        except ValueError:
-            # json.load() raised ValueError for malformed JSON.
-            # Keep the defaults we already set above.
-            pass
-        except KeyError:
-            # Unexpected key error during merge — keep defaults.
-            pass
+            status = "defaults"
+        except (ValueError, KeyError):
+            # json.load() raised ValueError for malformed JSON, or
+            # unexpected key error during merge — keep defaults.
+            status = "corrupt"
 
         # Clamp any out-of-range values regardless of where data came from.
         self._validate()
+
+        return status
 
     def save(self):
         """Write the current configuration to the JSON file.
@@ -196,14 +200,19 @@ class ConfigManager:
         Errors (e.g. read-only filesystem in developer mode) are caught and
         silently ignored — the device continues running with its in-memory
         config.
+
+        Returns:
+            bool: True if save succeeded, False on OSError (read-only
+                  filesystem, storage full, etc.).
         """
         try:
             with open(self._path, "w") as f:
                 json.dump(self._data, f)
+            return True
         except OSError:
             # Filesystem is read-only (developer mode) or storage is full.
             # Nothing we can do — silently skip the save.
-            pass
+            return False
 
     def get(self, dotpath):
         """Read a config value using dot notation.
@@ -248,6 +257,9 @@ class ConfigManager:
         # Set the leaf value.
         node[keys[-1]] = value
 
+        # Clamp to valid range if a validation rule exists for this key.
+        self._validate_key(dotpath)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -267,12 +279,47 @@ class ConfigManager:
             override (dict): The dict whose values take precedence.
         """
         for key, value in override.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            if key not in base:
+                # Reject unknown keys not present in defaults — silently skip.
+                continue
+            if isinstance(base[key], dict) and isinstance(value, dict):
                 # Both sides are dicts — recurse to merge nested structure.
                 self._merge(base[key], value)
             else:
                 # Scalar, list, or type mismatch — override wins outright.
                 base[key] = value
+
+    def _validate_key(self, dotpath):
+        """Clamp a single config value to its declared valid range.
+
+        Looks up the dotpath in the VALIDATION dict. If a range exists and
+        the current value is numeric, clamps it in place using direct dict
+        traversal (avoids calling self.set() which would recurse).
+
+        Non-numeric values (e.g. None) are left untouched.
+
+        Args:
+            dotpath (str): Dot-separated key path, e.g. "midi.tx_channel".
+        """
+        if dotpath not in VALIDATION:
+            return
+
+        lo, hi = VALIDATION[dotpath]
+
+        # Read the current value via direct traversal.
+        keys = dotpath.split(".")
+        node = self._data
+        for key in keys[:-1]:
+            node = node[key]
+
+        value = node[keys[-1]]
+
+        if not isinstance(value, (int, float)):
+            return
+
+        clamped = max(lo, min(hi, value))
+        if clamped != value:
+            node[keys[-1]] = clamped
 
     def _validate(self):
         """Clamp numeric config values to their declared valid ranges.

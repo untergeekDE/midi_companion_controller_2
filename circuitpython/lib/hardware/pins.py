@@ -17,23 +17,28 @@
 # rather than GP4. This makes the intent clear and lets you remap a pin
 # without hunting through calling code.
 #
-# PIN CONFLICT AUDIT (each board.GP* used exactly once):
-#   GP2   → LED1
-#   GP3   → LED2
-#   GP4   → UART_TX
-#   GP5   → UART_RX
-#   GP13  → FOOTSWITCH
-#   GP15  → BUTTON_B
-#   GP16  → SPI_MISO
-#   GP17  → BUTTON_A
-#   GP18  → SPI_CLK
-#   GP19  → SPI_MOSI
-#   GP20  → I2C_SDA
-#   GP21  → I2C_SCL
-#   GP22  → USB_HOST_CS
-#   GP14  → USB_HOST_INT
-#   A0    → WHEEL_A       (GP26 in analog mode — board.A0 alias)
-#   A1    → WHEEL_B       (GP27 in analog mode — board.A1 alias)
+# 2026-03-28: Adapting for easier soldering (JE)
+#
+#   GP0   → BUTTON_A (Pin 1)
+#   GP1   → BUTTON_B (pin 2)
+#           GND (Pin 3)
+#   GP2   → LED1 (pin 4)
+#   GP3   → LED2 (pin 5)
+#   GP4   → UART_TX (pin 6)
+#   GP5   → UART_RX (Pin 7)
+#   GP13  → FOOTSWITCH (Pin 17)
+#           GND (Pin 18)
+#   GP14  → USB_HOST_INT (Pin 19)
+#   GP16  → SPI_MISO (pin 21)
+#   GP18  → SPI_CLK (pin 24)
+#   GP19  → SPI_MOSI (Pin 25)
+#   GP20  → I2C_SDA (pin 26)
+#   GP21  → I2C_SCL (pin 27)
+#           GND (pin 28)
+#   GP22  → USB_HOST_CS (pin 29)
+#   GP26/A0    → WHEEL_A (pin 31)
+#   GP27/A1    → WHEEL_B (pin 32)
+#           AGND (pin 33)
 
 import board
 
@@ -62,11 +67,11 @@ WHEEL_B = board.A1
 # Button A — primary menu / navigation button.
 # Also checked in boot.py to enable developer mode during boot.
 # Must use INPUT_PULLUP; active low (LOW = pressed).
-BUTTON_A = board.GP17
+BUTTON_A = board.GP0
 
 # Button B — confirm / set / secondary action button.
 # Must use INPUT_PULLUP; active low (LOW = pressed).
-BUTTON_B = board.GP15
+BUTTON_B = board.GP1
 
 # Footswitch — external 1/4" TS jack for a latching or momentary footswitch.
 # Wired the same as the buttons: tip to GPIO, sleeve to GND, INPUT_PULLUP.

@@ -25,10 +25,11 @@
 import analogio
 
 
-# CircuitPython ADC returns 16-bit values (0..65535). The original Teensy
-# code used 10-bit (0..1023). We scale down to 10-bit equivalent for
-# compatibility with the original calibration values and algorithm.
-_ADC_SHIFT = 6  # Right-shift 16-bit to 10-bit: 65535 >> 6 ~ 1023
+# CircuitPython ADC returns 16-bit values (0..65535) on RP2350.
+# The original Teensy code used 10-bit (0..1023). We scale down to
+# 10-bit equivalent for compatibility with calibration values.
+# For boards with 12-bit ADC (0..4095), change to _ADC_SHIFT = 2.
+_ADC_SHIFT = 6
 
 
 class AnalogWheel:
@@ -66,6 +67,7 @@ class AnalogWheel:
         """
         self._center = center
         self._delta = delta
+        self.deadband = min(self.deadband, 63)
 
     def read(self):
         """Read the wheel and return a MIDI-ready value.
@@ -113,8 +115,14 @@ class AnalogWheel:
             if v < -128:
                 v = -128
 
-        # Scale from 8-bit (-128..127) to 14-bit (-8192..8191).
-        return v * 64
+        # Scale from 8-bit (-128..127) to unsigned 14-bit (0..16383)
+        # for adafruit_midi PitchBend which expects 0-16383.
+        # Center = 8192, full down = 0, full up = 16383.
+        if v > 0:
+            return 8192 + v * 8191 // 127
+        elif v < 0:
+            return 8192 + v * 8192 // 128
+        return 8192
 
     def _read_uncentered(self, raw):
         """Process an uncentered wheel (CC / mod wheel).

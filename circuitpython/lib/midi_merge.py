@@ -46,6 +46,8 @@ class MidiMerge:
         thru_enabled: If True, DIN input ("din") is forwarded to outputs.
     """
 
+    _MAX_QUEUE = 64
+
     def __init__(self, inputs, outputs, thru_enabled=False):
         self.inputs = inputs
         self.outputs = outputs
@@ -54,6 +56,10 @@ class MidiMerge:
         # Queue entries are (msg, source_name) tuples.
         # source_name is None for locally injected messages.
         self._queue = []
+        # Warn about mismatched names (development aid for echo prevention).
+        for name in inputs:
+            if name not in outputs:
+                print(f"MidiMerge: input '{name}' has no matching output")
 
     def process(self):
         """Read all MIDI inputs and queue messages for output.
@@ -72,6 +78,8 @@ class MidiMerge:
                 self.had_input = True
                 # DIN input is conditional on thru_enabled.
                 if name != "din" or self.thru_enabled:
+                    if len(self._queue) >= self._MAX_QUEUE:
+                        break
                     self._queue.append((msg, name))
                 msg = source.receive()
 
@@ -83,6 +91,8 @@ class MidiMerge:
         Args:
             msg: An adafruit_midi message object.
         """
+        if len(self._queue) >= self._MAX_QUEUE:
+            return
         self._queue.append((msg, None))
 
     def flush(self):

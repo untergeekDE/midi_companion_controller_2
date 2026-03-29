@@ -15,6 +15,7 @@
 #     cal.run()
 
 import time
+import microcontroller
 from hardware.wheels import _ADC_SHIFT
 
 
@@ -32,6 +33,8 @@ class WheelCalibration:
         button_b: The DebouncedButton used to confirm (Button B).
         config: The ConfigManager instance to save calibration values.
     """
+
+    _TIMEOUT_S = 30
 
     def __init__(self, display, wheel_a, wheel_b, button_b, config):
         self._display = display
@@ -54,7 +57,11 @@ class WheelCalibration:
         self._display.show_text(0, 50, "and press button")
 
         # Step 2: Wait for Button B press.
-        self._wait_for_press()
+        if not self._wait_for_press():
+            self._display.clear()
+            self._display.show_text(0, 24, "Timeout!")
+            time.sleep(1)
+            return
 
         # Step 3: Read raw analog values (scaled to 10-bit for compatibility).
         raw_a = self._wheel_a._adc.value >> _ADC_SHIFT
@@ -89,20 +96,36 @@ class WheelCalibration:
         self._display.show_text(48, 56, "OK", scale=2)
 
         # Step 6: Wait for confirmation press, then return.
-        self._wait_for_press()
+        if not self._wait_for_press():
+            self._display.clear()
+            self._display.show_text(0, 24, "Timeout!")
+            time.sleep(1)
+            return
 
     def _wait_for_press(self):
-        """Block until Button B is pressed (fell edge detected)."""
+        """Block until Button B is pressed (fell edge detected).
+
+        Returns:
+            True if button was pressed, False if timed out.
+        """
+        start = time.monotonic()
+
         # First, wait for button to be released (in case it's still held).
         while True:
             self._button.update()
             if not self._button.pressed:
                 break
+            if time.monotonic() - start > self._TIMEOUT_S:
+                return False
+            microcontroller.watchdog.feed()
             time.sleep(0.01)  # Yield CPU to avoid 100% spin.
 
         # Then wait for a new press.
         while True:
             self._button.update()
             if self._button.fell:
-                return
+                return True
+            if time.monotonic() - start > self._TIMEOUT_S:
+                return False
+            microcontroller.watchdog.feed()
             time.sleep(0.01)
