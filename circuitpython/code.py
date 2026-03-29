@@ -128,17 +128,19 @@ menu = OnDeviceMenu(display, config, wheel_a, wheel_b, button_a, button_b)
 display.show_workscreen(channel=config.get("midi.tx_channel"))
 display.show_text(80, 10, f"v{__version__}", scale=1)
 
-# Watchdog — auto-resets if main loop hangs for 8 seconds.
+# Watchdog — enabled after first successful loop iteration to avoid
+# crash-loop if code.py has a bug (watchdog reset → crash → repeat).
 import microcontroller
 import watchdog
-microcontroller.watchdog.timeout = 8.0
-microcontroller.watchdog.mode = watchdog.WatchDogMode.RESET
+_watchdog_started = False
 
 # ──────────────────────────────────────────────
 # 4. MAIN LOOP
 # ──────────────────────────────────────────────
 while True:
-    microcontroller.watchdog.feed()
+    # Feed watchdog (if running).
+    if _watchdog_started:
+        microcontroller.watchdog.feed()
 
     # --- Update button states ---
     button_a.update()
@@ -285,3 +287,9 @@ while True:
     # --- LEDs off at end of cycle ---
     led_in.off()
     led_out.off()
+
+    # Enable watchdog after first fully successful iteration.
+    if not _watchdog_started:
+        microcontroller.watchdog.timeout = 8.0
+        microcontroller.watchdog.mode = watchdog.WatchDogMode.RESET
+        _watchdog_started = True
