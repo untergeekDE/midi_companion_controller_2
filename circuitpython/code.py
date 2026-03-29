@@ -78,7 +78,7 @@ led_in = StatusLED(pins.LED1)
 led_out = StatusLED(pins.LED2)
 
 # Buttons.
-button_a = DebouncedButton(pins.BUTTON_A, double_click_ms=250)
+button_a = DebouncedButton(pins.BUTTON_A, double_click_ms=400)
 button_b = DebouncedButton(pins.BUTTON_B, double_click_ms=0)  # No double-click needed.
 footswitch = DebouncedButton(pins.FOOTSWITCH, double_click_ms=0)
 

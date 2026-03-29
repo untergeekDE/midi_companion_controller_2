@@ -79,24 +79,20 @@ class OnDeviceMenu:
         saved_wb_mode = self._wheel_b.mode
         self._wheel_b.mode = "cc"
         self._draw_menu()
-        wheel_moved = False
-        wheel_old = self._wheel_b.read()
+        last_wheel = self._wheel_b.read()
 
         while True:
             self._btn_a.update()
             self._btn_b.update()
 
-            # Check if wheel has moved significantly.
+            # Check if wheel has moved significantly from last actioned position.
             wheel_val = self._wheel_b.read()
-            if not wheel_moved:
-                diff = abs(wheel_val - wheel_old)
-                wheel_moved = diff > 5
+            wheel_moved = abs(wheel_val - last_wheel) > 5
 
             # Handle Button A: step to next item.
             if self._btn_a.fell:
                 self._selected = (self._selected + 1) % (len(_MENU_ITEMS) + 1)
-                wheel_moved = False
-                wheel_old = wheel_val
+                last_wheel = wheel_val  # Reset reference for new item.
                 self._draw_menu()
 
             # Handle Button B: confirm/toggle current item.
@@ -114,6 +110,7 @@ class OnDeviceMenu:
                 item = _MENU_ITEMS[self._selected]
                 self._handle_wheel(item, wheel_val)
                 self._draw_menu()
+                last_wheel = wheel_val  # Update reference after acting.
 
             microcontroller.watchdog.feed()
             time.sleep(0.01)  # Yield CPU to avoid 100% spin.
